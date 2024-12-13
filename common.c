@@ -1,4 +1,3 @@
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -7,16 +6,33 @@
 
 #define CRC_POLYNOMIAL 0xEDB88320
 
-char* createMESGMessage(const char* r_name, const char* message){
-    char* retval = (char*) malloc(1024);
-    snprintf(retval, 1024, "MESG|%s|%s", r_name, message);
+char* createMESGMessage(const char* sender, const char* message) {
+    char* retval = (char*) malloc(2048); // Increase buffer size
+    char recipient[256] = {0};
+    char content[768] = {0};
+    
+    // Parse the message to extract recipient and content
+    if (sscanf(message, "%255[^|]|%767[^\n]", recipient, content) == 2) {
+        // Format: MESG|recipient|sender|content
+        int written = snprintf(retval, 2047, "MESG|%s|%s|%s", 
+                             recipient,
+                             sender ? sender : "",
+                             content);
+        
+        if (written >= 0 && written < 2047) {
+            uint8_t parity = simple_parity_check(retval + 5);
+            uint8_t crcVal = calculateCRC((const uint8_t*)(retval + 5), strlen(retval + 5));
 
-    uint8_t parity = simple_parity_check(retval + 5);
-    uint8_t crcVal = calculateCRC((const uint8_t*)(retval + 5), strlen(retval + 5));
-
-    retval[strlen(retval)] = parity;
-    retval[strlen(retval) + 1] = crcVal;
-    retval[strlen(retval) + 2] = '\0';
+            retval[written] = parity;
+            retval[written + 1] = crcVal;
+            retval[written + 2] = '\0';
+        } else {
+            // Message too long, truncate or handle error
+            strcpy(retval, "MERR");
+        }
+    } else {
+        strcpy(retval, "MERR");
+    }
 
     return retval;
 }
@@ -72,12 +88,18 @@ struct _data* parse_data(char* buffer){
     return retval;
 }
 
-struct _message* parse_message(char* msg){
+struct _message* parse_message(char* msg) {
     struct _message* retval = (struct _message*) malloc(sizeof(struct _message));
     char* token = strtok(msg, "|");
-    strcpy(retval->reciever_name, token);
-    token = strtok(NULL, "|");
-    strcpy(retval->message, token);
+    if (token != NULL) {
+        strcpy(retval->reciever_name, token);
+        token = strtok(NULL, "");  // Get rest of message
+        if (token != NULL) {
+            strcpy(retval->message, token);
+        } else {
+            strcpy(retval->message, "");
+        }
+    }
     return retval;
 }
 

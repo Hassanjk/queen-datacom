@@ -43,7 +43,13 @@ void* receive_messages(void* socket_ptr) {
                 free(merr);
                 log_message("Corrupted message detected, requesting resend");
             } else {
-                printf("Received: %s\n", received_data->data);
+                // Parse the message format: recipient|sender|content
+                char recipient[256], sender[256], content[768];
+                if (sscanf(received_data->data, "%[^|]|%[^|]|%[^\n]", recipient, sender, content) == 3) {
+                    printf("\n[Message from %s]: %s\n", sender, content);
+                    printf("Enter command (/msg <recipient> <message> or /quit): ");
+                    fflush(stdout);
+                }
                 log_message("Message received successfully");
             }
         }
@@ -51,6 +57,32 @@ void* receive_messages(void* socket_ptr) {
         free(received_data);
     }
     return NULL;
+}
+
+void process_command(const char* cmd, char* username, int sock) {
+    char command[32];
+    char args[992];
+    
+    // Extract command and arguments
+    if (sscanf(cmd, "/%s %[^\n]", command, args) < 2) {
+        printf("Invalid command format. Use /msg <recipient> <message> or /quit\n");
+        return;
+    }
+
+    if (strcmp(command, "msg") == 0) {
+        char recipient[256];
+        char message[736];
+        if (sscanf(args, "%s %[^\n]", recipient, message) == 2) {
+            char formatted_msg[1024];
+            snprintf(formatted_msg, sizeof(formatted_msg), "%s|%s", recipient, message);
+            char* msg = createMESGMessage(username, formatted_msg);
+            send(sock, msg, strlen(msg), 0);
+            free(msg);
+            log_message("Message sent");
+        } else {
+            printf("Usage: /msg <recipient> <message>\n");
+        }
+    }
 }
 
 int main() {
@@ -105,23 +137,26 @@ int main() {
     pthread_t receive_thread;
     pthread_create(&receive_thread, NULL, receive_messages, &sock);
 
+    printf("Commands available:\n");
+    printf("/msg <recipient> <message> - Send a message\n");
+    printf("/quit - Exit the program\n\n");
+
     // Main communication loop
     while (1) {
-        printf("Enter recipient and message (format: recipient|message) or 'quit': ");
+        printf("Enter command (/msg <recipient> <message> or /quit): ");
         fgets(buffer, 1024, stdin);
         buffer[strcspn(buffer, "\n")] = 0;  // Remove newline
 
-        if (strcmp(buffer, "quit") == 0) {
+        if (strncmp(buffer, "/quit", 5) == 0) {
             char* gone_msg = createGONEMessage();
             send(sock, gone_msg, strlen(gone_msg), 0);
             free(gone_msg);
             break;
+        } else if (strncmp(buffer, "/", 1) == 0) {
+            process_command(buffer, username, sock);
+        } else {
+            printf("Invalid command. Use /msg or /quit\n");
         }
-
-        char* msg = createMESGMessage(username, buffer);
-        send(sock, msg, strlen(msg), 0);
-        free(msg);
-        log_message("Message sent");
 
         memset(buffer, 0, sizeof(buffer));
     }

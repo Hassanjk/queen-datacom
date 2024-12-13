@@ -64,6 +64,29 @@ int getRandomBoolean() {
     return rand() % 2 == 0;
 }
 
+void broadcast_message(const char* message, int sender_socket) {
+    pthread_mutex_lock(&mutex);
+    struct _data* msg_data = parse_data((char*)message);
+    
+    if (msg_data->type == MESG) {
+        char recipient[256], content[768];
+        // Extract recipient from the message
+        if (sscanf(msg_data->data, "%[^|]|%[^\n]", recipient, content) == 2) {
+            // Find recipient and send only to them
+            for (int i = 0; i < clients_size; i++) {
+                if (clients[i].isActive && strcmp(clients[i].name, recipient) == 0) {
+                    send(clients[i].socket, message, strlen(message), 0);
+                    printf("Message forwarded to %s\n", recipient);
+                    break;
+                }
+            }
+        }
+    }
+    
+    free(msg_data);
+    pthread_mutex_unlock(&mutex);
+}
+
 void* ServerClient(void* threadVal) {
     struct client* _client = (struct client*)threadVal;
     char buffer[1024] = {0};

@@ -17,12 +17,12 @@ struct _data {
     short type;
     uint8_t parity;
     uint8_t CRC;
-    char data[1024];
+    char data[2048];  // Increase buffer size
 };
 
 struct _message {
     char reciever_name[256];
-    char message[1024];
+    char message[1792];  // Increase buffer size
 };
 
 // Function declarations
